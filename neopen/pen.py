@@ -24,7 +24,6 @@ import os
 import struct
 import cairocffi as cairo
 import warnings
-import argparse
 from collections import namedtuple, defaultdict
 
 
@@ -183,19 +182,4 @@ def parse_pendata(data):
         ink.append(stroke)
 
     return ink
-
-
-def main():
-    parser = argparse.ArgumentParser(description='Neo Pen')
-    parser.add_argument('pen_dir', type=str,
-                        help='path to a file')
-    parser.add_argument('save_dir', type=str,
-                        help='path to a file')
-    args = parser.parse_args()
-
-    download_all_notebooks(args.pen_dir, args.save_dir)
-
-
-if __name__ == "__main__":
-    main()
 
