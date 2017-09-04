@@ -96,8 +96,11 @@ def pages_in_notebook(path):
     """
     pages = os.listdir(path)
     for page in sorted(pages, key=int):
-        yield read_penfile(
-           os.path.join(path, page, "0.pen"))
+        ink = []
+        parts = os.listdir(os.path.join(path, page))
+        for part in sorted(parts, key=lambda s: int(s[:-4])):
+            ink.extend(read_penfile(os.path.join(path, page, part)))
+        yield ink
 
 
 def download_notebook(path, pdf_file):
