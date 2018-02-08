@@ -53,11 +53,18 @@ NotebookProperties = namedtuple(
     'NotebookProperties',
     ['name', 'size', 'num_pages'])
 
-PLAIN_NOTEBOOK = NotebookProperties("Plain_Notebook", DIN_B5, 72)
-POCKET_NOTEBOOK = NotebookProperties("Pocket_Notebook",
-                                     (144 * _PT_PER_MM,  83 * _PT_PER_MM), 64)
-NCODE_PLAIN_NOTEBOOK = NotebookProperties("Ncode", US_LETTER, 51)
-DEFAULT_NOTEBOOK = NotebookProperties("Notebook", US_LETTER, 0)
+class Notebook:
+    PLAIN = NotebookProperties("Plain_Notebook", DIN_B5, 72)
+    POCKET = NotebookProperties("Pocket_Notebook",
+                                (144 * _PT_PER_MM,  83 * _PT_PER_MM), 64)
+    NCODE_PLAIN = NotebookProperties("Ncode", US_LETTER, 50)
+    NCODE_STRING = NotebookProperties("Ncode", US_LETTER, 50)
+    NCODE_GRID = NotebookProperties("Ncode", US_LETTER, 50)
+    NCODE_DOT = NotebookProperties("Ncode", US_LETTER, 50)
+    #NCODE_LANDSCAPE = 
+    DEFAULT = NotebookProperties("Notebook", US_LETTER, 0)
+
+
 
 def position_in_pt(point):
     """ converts a Point to (x,y)-tuple in units of pt = (inch / 72)
@@ -70,24 +77,24 @@ def position_in_pt(point):
     """
     return (point.x + _OFFSET) * _UNIT_PT, (point.y + _OFFSET) * _UNIT_PT
 
+notebook_table = {
+        "551": Notebook.NCODE_PLAIN,
+        "604": Notebook.NCODE_PLAIN,
+        "601": Notebook.POCKET,
+        "610": Notebook.PLAIN,
+        "611": Notebook.PLAIN,
+        "612": Notebook.PLAIN,
+        "613": Notebook.NCODE_PLAIN}
 
-def unknown_notebook():
-    """ returns default properties for a unknown notebook
+def get_notebook_properties(name):
+    try:
+        notebook = notebook_table[name]
+    except KeyError:
+        warnings.warn(f'format of document "{name}" not known, '
+                      f'US Letter is assumed')
+        notebook = DEFAULT_NOTEBOOK
+    return notebook
 
-    Warnings:
-        throw warning that norebook is unknown
-    """
-    warnings.warn('format of document not known, '
-                  'US Letter is assumed')
-    return DEFAULT_NOTEBOOK
-
-
-paper_format = defaultdict(
-    unknown_notebook, {  
-        "551": NCODE_PLAIN_NOTEBOOK,
-        "604": NCODE_PLAIN_NOTEBOOK,
-        "601": POCKET_NOTEBOOK,
-        "613": NCODE_PLAIN_NOTEBOOK})
 
 
 def notebooks_in_folder(folder):
@@ -115,7 +122,7 @@ def download_notebook(path, pdf_file, *args, **kwargs):
     """ downloads the notebook and save a pdf of it
     """
     name = os.path.basename(path)
-    _, (width, height), num_pages = paper_format[name]
+    _, (width, height), num_pages = get_notebook_properties(name)
     surface = cairo.PDFSurface(pdf_file, width, height)
     context = cairo.Context(surface)
     for ink in pages_in_notebook(path):
@@ -128,7 +135,7 @@ def download_all_notebooks(pen_dir, save_dir, *args, **kwargs):
     """
     for notebook_path in notebooks_in_folder(pen_dir):
         name = os.path.basename(notebook_path)
-        notebook_name, *_ = paper_format[name]
+        notebook_name, *_ = get_notebook_properties(name)
         pdf_file = os.path.join(save_dir,
                                 f"{notebook_name}_{name}.pdf")
         download_notebook(notebook_path, pdf_file, *args, **kwargs)
