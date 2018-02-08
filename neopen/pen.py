@@ -62,7 +62,7 @@ def unknown_notebook():
     Warnings:
         throw warning that norebook is unknown
     """
-    warnings.warn("format of document not known {}, "
+    warnings.warn("format of document not known, "
                   "US Letter is assumed")
     return NotebookProperties(
         name="unknown notebook",
@@ -103,7 +103,7 @@ def pages_in_notebook(path):
         yield ink
 
 
-def download_notebook(path, pdf_file):
+def download_notebook(path, pdf_file, *args, **kwargs):
     """ downloads the notebook and save a pdf of it
     """
     name = os.path.basename(path)
@@ -111,11 +111,11 @@ def download_notebook(path, pdf_file):
     surface = cairo.PDFSurface(pdf_file, width, height)
     context = cairo.Context(surface)
     for ink in pages_in_notebook(path):
-        write_ink(context, ink)
+        write_ink(context, ink, *args, **kwargs)
     surface.finish()
 
 
-def download_all_notebooks(pen_dir, save_dir):
+def download_all_notebooks(pen_dir, save_dir, *args, **kwargs):
     """ downloads all notebooks in a folder and save each as pdf
     """
     for notebook_path in notebooks_in_folder(pen_dir):
@@ -123,25 +123,36 @@ def download_all_notebooks(pen_dir, save_dir):
         notebook_name, _ = paper_format[name]
         pdf_file = os.path.join(save_dir,
                                 f"{notebook_name}_{name}.pdf")
-        download_notebook(notebook_path, pdf_file)
+        download_notebook(notebook_path, pdf_file, *args, **kwargs)
 
 
-def write_ink(ctx, ink):
+def write_ink(ctx, ink, color, pressure_sensitive=False):
     """ write ink onto a (cairo) context
 
     Args:
         ctx: cairo context
         ink (list of Stroke): the pen stroke which are written
     """
-    ctx.set_line_cap(1)
-    ctx.set_line_join(0)
-    ctx.set_source_rgb(0, 0, 1)
-
+    ctx.set_line_cap(cairo.LINE_CAP_ROUND)
+    ctx.set_line_join(cairo.LINE_JOIN_BEVEL)
+    ctx.set_line_width(1.)
+    if color == "blue":
+        ctx.set_source_rgb(0, 0, 1)
+    elif color == "black":
+        ctx.set_source_rgb(0, 0, 0)
+    else:
+        raise ValueError(f"unknown color {color}")
     for stroke in ink:
-        for start_point, end_point in zip(stroke[:-1], stroke[1:]):
-            ctx.move_to(*position_in_pt(start_point))
-            ctx.set_line_width(.1 + start_point.pressure)
-            ctx.line_to(*position_in_pt(end_point))
+        if pressure_sensitive:
+            for start_point, end_point in zip(stroke[:-1], stroke[1:]):
+                ctx.move_to(*position_in_pt(start_point))
+                ctx.set_line_width(.1 + start_point.pressure)
+                ctx.line_to(*position_in_pt(end_point))
+                ctx.stroke()
+        else:
+            ctx.move_to(*position_in_pt(stroke[0]))
+            for point in stroke[1:]:
+                ctx.line_to(*position_in_pt(point))
             ctx.stroke()
     ctx.show_page()
 
@@ -162,16 +173,38 @@ def _parse_point(data):
 
 
 def _parse_gap(data):
-    a, b, time_start, time_end, stroke_len, c, d, e, = \
+    a, b, time_start, time_end, stroke_len, c, d, e = \
         struct.unpack(_GAP_FORMAT, data)
-    #print(a, b, c, d, e)
+    #print("\n", a, b, "  ", stroke_len, c, d, e)
+    if a==49:  # Todo(dv): I have no clue what this data packet could mean
+        return None
     return stroke_len
+
+def _remove_outliners(stroke):
+    for i in range(1, len(stroke)-1):
+        distance_prev = abs(stroke[i].x - stroke[i-1].x)
+        distance_next = abs(stroke[i].x - stroke[i+1].x)
+        distance_neighbors = abs(stroke[i-1].x - stroke[i+1].x)
+        if distance_prev > 1 and distance_next > 1 > distance_neighbors:
+            stroke[i] = Point(x=(stroke[i-1].x + stroke[i+1].x) / 2,
+                              y=stroke[i].y,
+                              pressure=stroke[i].pressure,
+                              duration=stroke[i].duration)
+
+        distance_prev = abs(stroke[i].y - stroke[i-1].y)
+        distance_next = abs(stroke[i].y - stroke[i+1].y)
+        distance_neighbors = abs(stroke[i-1].y - stroke[i+1].y)
+        if distance_prev > 1 and distance_next > 1 > distance_neighbors:
+            stroke[i] = Point(x=stroke[i].x,
+                              y=(stroke[i-1].y + stroke[i+1].y) / 2,
+                              pressure=stroke[i].pressure,
+                              duration=stroke[i].duration)
 
 
 def parse_pendata(data):
     i = 0
     ink = []
-    
+
     while True:
         stroke_len = _parse_gap(data[i: i + 28])
         if not stroke_len:
@@ -182,7 +215,7 @@ def parse_pendata(data):
             point = _parse_point(data[i: i+8])
             i += 8
             stroke.append(point)
+        _remove_outliners(stroke)
         ink.append(stroke)
 
     return ink
-
