@@ -38,7 +38,8 @@ NotebookProperties = namedtuple(
     'NotebookProperties',
     ['name', 'size'])
 
-_UNIT_PT = 72 * 8.5 / (1820 / 20)
+_UNIT_PT = 72 / 24.5 * 2.371  # DOTS_PER_INCH / MM_PER_INCH * MM_PER_NCODE_UNIT
+                              # see: https://github.com/NeoSmartpen/UWPSDK
 _POINT_FORMAT = "<BHHBBB"
 _GAP_FORMAT = "<BBQQIIBB"
 _MAX_PRESSURE = 256
