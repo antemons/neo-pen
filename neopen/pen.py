@@ -34,19 +34,33 @@ __license__ = "GPL"
 
 Stroke = list
 Point = namedtuple('Point', ['x', 'y', 'pressure', 'duration'])
-NotebookProperties = namedtuple(
-    'NotebookProperties',
-    ['name', 'size'])
 
-_UNIT_PT = 72 / 24.5 * 2.371  # DOTS_PER_INCH / MM_PER_INCH * MM_PER_NCODE_UNIT
+
+_PT_PER_INCH = 72
+_PT_PER_MM = _PT_PER_INCH / 25.4 # point units (1/72 inch) per mm
+_UNIT_PT = _PT_PER_MM * 2.371  # DOTS_PER_INCH / MM_PER_INCH * MM_PER_NCODE_UNIT
                               # see: https://github.com/NeoSmartpen/UWPSDK
+DIN_B5 = (176 * _PT_PER_MM, 250 * _PT_PER_MM)
+US_LETTER = (216 * _PT_PER_MM, 280 * _PT_PER_MM)
+
+_OFFSET = -6  # this value seems to work optimal
 _POINT_FORMAT = "<BHHBBB"
 _GAP_FORMAT = "<BBQQIIBB"
 _MAX_PRESSURE = 256
 
 
+NotebookProperties = namedtuple(
+    'NotebookProperties',
+    ['name', 'size', 'num_pages'])
+
+PLAIN_NOTEBOOK = NotebookProperties("Plain_Notebook", DIN_B5, 72)
+POCKET_NOTEBOOK = NotebookProperties("Pocket_Notebook",
+                                     (144 * _PT_PER_MM,  83 * _PT_PER_MM), 64)
+NCODE_PLAIN_NOTEBOOK = NotebookProperties("Ncode", US_LETTER, 51)
+DEFAULT_NOTEBOOK = NotebookProperties("Notebook", US_LETTER, 0)
+
 def position_in_pt(point):
-    """ converts a Point to (x,y)-tuple in units of  pt = (inch / 72)
+    """ converts a Point to (x,y)-tuple in units of pt = (inch / 72)
 
     Args:
         point: instance with attributes x, y
@@ -54,7 +68,7 @@ def position_in_pt(point):
     Returns:
         tuple (x, y) of float
     """
-    return point.x * _UNIT_PT, point.y * _UNIT_PT
+    return (point.x + _OFFSET) * _UNIT_PT, (point.y + _OFFSET) * _UNIT_PT
 
 
 def unknown_notebook():
@@ -63,24 +77,17 @@ def unknown_notebook():
     Warnings:
         throw warning that norebook is unknown
     """
-    warnings.warn("format of document not known, "
-                  "US Letter is assumed")
-    return NotebookProperties(
-        name="unknown notebook",
-        size=(72 * 8.5, 72 * 11))
+    warnings.warn('format of document not known, '
+                  'US Letter is assumed')
+    return DEFAULT_NOTEBOOK
 
 
 paper_format = defaultdict(
-    unknown_notebook,
-    {   # (width, height) in pt
-        "551": NotebookProperties(
-            "Letter_blanko", (72 * 8.5, 72 * 11)),
-        "604": NotebookProperties(
-            "Letter_blanko", (72 * 8.5, 72 * 11)),
-        "601": NotebookProperties(
-            "Pocket_Notes", (72 * 3.3, 72 * 5.8)),
-        "613": NotebookProperties(
-            "Letter_blanko", (72 * 8.5, 72 * 11))})
+    unknown_notebook, {  
+        "551": NCODE_PLAIN_NOTEBOOK,
+        "604": NCODE_PLAIN_NOTEBOOK,
+        "601": POCKET_NOTEBOOK,
+        "613": NCODE_PLAIN_NOTEBOOK})
 
 
 def notebooks_in_folder(folder):
@@ -108,7 +115,7 @@ def download_notebook(path, pdf_file, *args, **kwargs):
     """ downloads the notebook and save a pdf of it
     """
     name = os.path.basename(path)
-    _, (width, height) = paper_format[name]
+    _, (width, height), num_pages = paper_format[name]
     surface = cairo.PDFSurface(pdf_file, width, height)
     context = cairo.Context(surface)
     for ink in pages_in_notebook(path):
@@ -121,7 +128,7 @@ def download_all_notebooks(pen_dir, save_dir, *args, **kwargs):
     """
     for notebook_path in notebooks_in_folder(pen_dir):
         name = os.path.basename(notebook_path)
-        notebook_name, _ = paper_format[name]
+        notebook_name, *_ = paper_format[name]
         pdf_file = os.path.join(save_dir,
                                 f"{notebook_name}_{name}.pdf")
         download_notebook(notebook_path, pdf_file, *args, **kwargs)
