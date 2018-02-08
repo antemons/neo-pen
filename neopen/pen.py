@@ -33,7 +33,7 @@ __license__ = "GPL"
 
 
 Stroke = list
-Point = namedtuple('Point', ['x', 'y', 'pressure', 'duration'])
+Dot = namedtuple('Dot', ['x', 'y', 'pressure', 'duration'])
 
 
 _PT_PER_INCH = 72
@@ -44,7 +44,7 @@ DIN_B5 = (176 * _PT_PER_MM, 250 * _PT_PER_MM)
 US_LETTER = (216 * _PT_PER_MM, 280 * _PT_PER_MM)
 
 _OFFSET = -6  # this value seems to work optimal
-_POINT_FORMAT = "<BHHBBB"
+_DOT_FORMAT = "<BHHBBB"
 _GAP_FORMAT = "<BBQQIIBB"
 _MAX_PRESSURE = 256
 
@@ -66,16 +66,16 @@ class Notebook:
 
 
 
-def position_in_pt(point):
-    """ converts a Point to (x,y)-tuple in units of pt = (inch / 72)
+def position_in_pt(dot):
+    """ converts a dot to (x,y)-tuple in units of pt = (inch / 72)
 
     Args:
-        point: instance with attributes x, y
+        dot: instance with attributes x, y
 
     Returns:
         tuple (x, y) of float
     """
-    return (point.x + _OFFSET) * _UNIT_PT, (point.y + _OFFSET) * _UNIT_PT
+    return (dot.x + _OFFSET) * _UNIT_PT, (dot.y + _OFFSET) * _UNIT_PT
 
 notebook_table = {
         "551": Notebook.NCODE_PLAIN,
@@ -159,15 +159,15 @@ def write_ink(ctx, ink, color, pressure_sensitive=False):
         raise ValueError(f"unknown color {color}")
     for stroke in ink:
         if pressure_sensitive:
-            for start_point, end_point in zip(stroke[:-1], stroke[1:]):
-                ctx.move_to(*position_in_pt(start_point))
-                ctx.set_line_width(.1 + start_point.pressure)
-                ctx.line_to(*position_in_pt(end_point))
+            for start_dot, end_dot in zip(stroke[:-1], stroke[1:]):
+                ctx.move_to(*position_in_pt(start_dot))
+                ctx.set_line_width(.1 + start_dot.pressure)
+                ctx.line_to(*position_in_pt(end_dot))
                 ctx.stroke()
         else:
             ctx.move_to(*position_in_pt(stroke[0]))
-            for point in stroke[1:]:
-                ctx.line_to(*position_in_pt(point))
+            for dot in stroke[1:]:
+                ctx.line_to(*position_in_pt(dot))
             ctx.stroke()
     ctx.show_page()
 
@@ -178,13 +178,13 @@ def read_penfile(filename):
     return parse_pendata(data)
 
 
-def _parse_point(data):
+def _parse_dot(data):
     duration, x1, y1, x2, y2, pressure = \
-        struct.unpack(_POINT_FORMAT, data)
-    return Point(x=x1 + x2/100,
-                 y=y1 + y2/100,
-                 pressure=pressure / _MAX_PRESSURE,
-                 duration=duration)
+        struct.unpack(_DOT_FORMAT, data)
+    return Dot(x=x1 + x2/100,
+               y=y1 + y2/100,
+               pressure=pressure / _MAX_PRESSURE,
+               duration=duration)
 
 
 def _parse_gap(data):
@@ -201,19 +201,19 @@ def _remove_outliners(stroke):
         distance_next = abs(stroke[i].x - stroke[i+1].x)
         distance_neighbors = abs(stroke[i-1].x - stroke[i+1].x)
         if distance_prev > 1 and distance_next > 1 > distance_neighbors:
-            stroke[i] = Point(x=(stroke[i-1].x + stroke[i+1].x) / 2,
-                              y=stroke[i].y,
-                              pressure=stroke[i].pressure,
-                              duration=stroke[i].duration)
+            stroke[i] = Dot(x=(stroke[i-1].x + stroke[i+1].x) / 2,
+                            y=stroke[i].y,
+                            pressure=stroke[i].pressure,
+                            duration=stroke[i].duration)
 
         distance_prev = abs(stroke[i].y - stroke[i-1].y)
         distance_next = abs(stroke[i].y - stroke[i+1].y)
         distance_neighbors = abs(stroke[i-1].y - stroke[i+1].y)
         if distance_prev > 1 and distance_next > 1 > distance_neighbors:
-            stroke[i] = Point(x=stroke[i].x,
-                              y=(stroke[i-1].y + stroke[i+1].y) / 2,
-                              pressure=stroke[i].pressure,
-                              duration=stroke[i].duration)
+            stroke[i] = Dot(x=stroke[i].x,
+                            y=(stroke[i-1].y + stroke[i+1].y) / 2,
+                            pressure=stroke[i].pressure,
+                            duration=stroke[i].duration)
 
 
 def parse_pendata(data):
@@ -227,9 +227,9 @@ def parse_pendata(data):
         i += 28
         stroke = []
         for _ in range(stroke_len):
-            point = _parse_point(data[i: i+8])
+            dot = _parse_dot(data[i: i+8])
             i += 8
-            stroke.append(point)
+            stroke.append(dot)
         _remove_outliners(stroke)
         ink.append(stroke)
 
