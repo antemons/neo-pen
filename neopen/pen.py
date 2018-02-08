@@ -24,7 +24,7 @@ import os
 import struct
 import cairocffi as cairo
 import warnings
-from collections import namedtuple, defaultdict
+from collections import namedtuple
 
 
 __author__ = "Daniel Vorberg"
@@ -39,7 +39,7 @@ Dot = namedtuple('Dot', ['x', 'y', 'pressure', 'duration'])
 _PT_PER_INCH = 72
 _PT_PER_MM = _PT_PER_INCH / 25.4 # point units (1/72 inch) per mm
 _UNIT_PT = _PT_PER_MM * 2.371  # DOTS_PER_INCH / MM_PER_INCH * MM_PER_NCODE_UNIT
-                              # see: https://github.com/NeoSmartpen/UWPSDK
+                               # see: https://github.com/NeoSmartpen/UWPSDK
 DIN_B5 = (176 * _PT_PER_MM, 250 * _PT_PER_MM)
 US_LETTER = (216 * _PT_PER_MM, 280 * _PT_PER_MM)
 
@@ -54,16 +54,37 @@ NotebookProperties = namedtuple(
     ['name', 'size', 'num_pages'])
 
 class Notebook:
-    PLAIN = NotebookProperties("Plain_Notebook", DIN_B5, 72)
+    """The properties of the notebooks
+
+    The dimensions are taken from:
+        https://www.neosmartpen.com/en/notebook/
+    and from the document properties of the Ncode pdfs
+        https://www.neosmartpen.com/en/ncode-pdf/
+
+    The following list is not complete.
+    """
+
+    DEFAULT = NotebookProperties("Notebook", US_LETTER, 0)
+    MEMO = NotebookProperties("Memo_Notebook",
+                              (83 * _PT_PER_MM,  148 * _PT_PER_MM), 50)
     POCKET = NotebookProperties("Pocket_Notebook",
-                                (144 * _PT_PER_MM,  83 * _PT_PER_MM), 64)
+                                (83 * _PT_PER_MM,  144 * _PT_PER_MM), 64)
+    BLANK_PLANNER = NotebookProperties("Blank_Planner",
+                                       (150 * _PT_PER_MM,  210 * _PT_PER_MM), 152)
+    RING =  NotebookProperties("Ring_Notebook",
+                               (150 * _PT_PER_MM,  210 * _PT_PER_MM), 152)
+    PROFESSIONAL_MINI = NotebookProperties(
+        "Professional_Mini", (90 * _PT_PER_MM,  140 * _PT_PER_MM), 200)
+    PROFESSIONAL = NotebookProperties(
+        "Professional", (205 * _PT_PER_MM,  140 * _PT_PER_MM), 250)
+    # ...
+    PLAIN = NotebookProperties("Plain_Notebook", DIN_B5, 72)
+    # ...
     NCODE_PLAIN = NotebookProperties("Ncode", US_LETTER, 50)
     NCODE_STRING = NotebookProperties("Ncode", US_LETTER, 50)
     NCODE_GRID = NotebookProperties("Ncode", US_LETTER, 50)
     NCODE_DOT = NotebookProperties("Ncode", US_LETTER, 50)
-    #NCODE_LANDSCAPE = 
-    DEFAULT = NotebookProperties("Notebook", US_LETTER, 0)
-
+    # ...
 
 
 def position_in_pt(dot):
@@ -90,9 +111,10 @@ def get_notebook_properties(name):
     try:
         notebook = notebook_table[name]
     except KeyError:
-        warnings.warn(f'format of document "{name}" not known, '
-                      f'US Letter is assumed')
-        notebook = DEFAULT_NOTEBOOK
+        msg = (f'format of document {name} not known, '
+               f'US Letter is assumed')
+        warnings.warn(msg)
+        notebook = Notebook.DEFAULT
     return notebook
 
 
