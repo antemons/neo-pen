@@ -34,9 +34,15 @@ def main():
                         help='path to a file')
     parser.add_argument('save_dir', type=str,
                         help='path to a file')
+    parser.add_argument("--color", default="black", help="black|blue")
+    parser.add_argument("--pressure_sensitiv", type=bool)
     args = parser.parse_args()
 
-    pen.download_all_notebooks(args.pen_dir, args.save_dir)
+
+    pen.download_all_notebooks(
+        args.pen_dir,
+        args.save_dir,
+        color=args.color)
 
 
 if __name__ == "__main__":
