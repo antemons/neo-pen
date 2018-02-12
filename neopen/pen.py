@@ -181,6 +181,11 @@ def write_ink(ctx, ink, color, pressure_sensitive=False):
         raise ValueError(f"unknown color {color}")
     for stroke in ink:
         if pressure_sensitive:
+            if len(stroke) == 1:
+                ctx.move_to(*position_in_pt(stroke[0]))
+                ctx.set_line_width(.1 + stroke[0].pressure)
+                ctx.line_to(*position_in_pt(stroke[0]))
+                ctx.stroke()
             for start_dot, end_dot in zip(stroke[:-1], stroke[1:]):
                 ctx.move_to(*position_in_pt(start_dot))
                 ctx.set_line_width(.1 + start_dot.pressure)
@@ -188,6 +193,8 @@ def write_ink(ctx, ink, color, pressure_sensitive=False):
                 ctx.stroke()
         else:
             ctx.move_to(*position_in_pt(stroke[0]))
+            if (len(stroke) == 1):
+                ctx.line_to(*position_in_pt(stroke[0]))
             for dot in stroke[1:]:
                 ctx.line_to(*position_in_pt(dot))
             ctx.stroke()
