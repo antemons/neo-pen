@@ -237,6 +237,17 @@ def _remove_outliners(stroke):
                             pressure=stroke[i].pressure,
                             duration=stroke[i].duration)
 
+def _remove_duplicates(stroke):
+    new_stroke = []
+    for position, same_dots in groupby(stroke, lambda dot: (dot.x, dot.y)):
+        same_dots = list(same_dots)
+        dot = Dot(*position,
+            pressure = max(dot.pressure for dot in same_dots),
+            duration = sum(dot.duration for dot in same_dots))
+        new_stroke.append(dot)
+    stroke[:] = new_stroke
+
+
 
 def parse_pendata(data):
     i = 0
@@ -253,6 +264,7 @@ def parse_pendata(data):
             i += 8
             stroke.append(dot)
         _remove_outliners(stroke)
+        _remove_duplicates(stroke)
         ink.append(stroke)
 
     return ink
