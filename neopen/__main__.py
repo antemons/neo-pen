@@ -36,6 +36,7 @@ def main():
                         help='path to a file')
     parser.add_argument("--color", default="black", help="black|blue")
     parser.add_argument("--pressure_sensitiv", type=bool)
+    parser.add_argument("--spline", type=bool)
     args = parser.parse_args()
 
 

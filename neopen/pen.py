@@ -25,6 +25,14 @@ import struct
 import cairocffi as cairo
 import warnings
 from collections import namedtuple
+from itertools import groupby
+
+try:
+    import numpy as np
+    from scipy import interpolate
+except ImportError:
+    warnings.warn("install numpy and scipy when you want"
+                  "to use the spline option")
 
 
 __author__ = "Daniel Vorberg"
@@ -163,7 +171,7 @@ def download_all_notebooks(pen_dir, save_dir, *args, **kwargs):
         download_notebook(notebook_path, pdf_file, *args, **kwargs)
 
 
-def write_ink(ctx, ink, color, pressure_sensitive=False):
+def write_ink(ctx, ink, color, pressure_sensitive=False, spline=False):
     """ write ink onto a (cairo) context
 
     Args:
@@ -186,6 +194,7 @@ def write_ink(ctx, ink, color, pressure_sensitive=False):
                 ctx.set_line_width(.1 + stroke[0].pressure)
                 ctx.line_to(*position_in_pt(stroke[0]))
                 ctx.stroke()
+
             for start_dot, end_dot in zip(stroke[:-1], stroke[1:]):
                 ctx.move_to(*position_in_pt(start_dot))
                 ctx.set_line_width(.1 + start_dot.pressure)
@@ -195,8 +204,22 @@ def write_ink(ctx, ink, color, pressure_sensitive=False):
             ctx.move_to(*position_in_pt(stroke[0]))
             if (len(stroke) == 1):
                 ctx.line_to(*position_in_pt(stroke[0]))
-            for dot in stroke[1:]:
-                ctx.line_to(*position_in_pt(dot))
+            else:
+                if len(stroke) < 4 or not spline:
+                    for dot in stroke[1:]:
+                        ctx.line_to(*position_in_pt(dot))
+                else:
+                    dots_in_pt = np.array([position_in_pt(dot) for dot in stroke])
+                    spline, u = interpolate.splprep(
+                        dots_in_pt.transpose(), k=3, s=len(dots_in_pt) / 20)
+                    for knot in 3 * list(u[2:-2]) + 4 * [u[1], u[-2]]:
+                        spline = interpolate.insert(knot, spline)
+                    x, y = spline[1]
+                    ctx.move_to(x[0], y[0])
+                    for i in range(len(x)//4 - 1):
+                        ctx.curve_to(x[4*i+1], y[4*i+1],
+                                     x[4*i+2], y[4*i+2],
+                                     x[4*i+3], y[4*i+3])
             ctx.stroke()
     ctx.show_page()
 
