@@ -27,6 +27,8 @@ import warnings
 from collections import namedtuple
 from itertools import groupby
 
+from . import inkml
+
 try:
     import numpy as np
     from scipy import interpolate
@@ -74,17 +76,17 @@ class Notebook:
 
     DEFAULT = NotebookProperties("Notebook", US_LETTER, 0)
     MEMO = NotebookProperties("Memo_Notebook",
-                              (83 * _PT_PER_MM,  148 * _PT_PER_MM), 50)
+                              (83 * _PT_PER_MM, 148 * _PT_PER_MM), 50)
     POCKET = NotebookProperties("Pocket_Notebook",
-                                (83 * _PT_PER_MM,  144 * _PT_PER_MM), 64)
+                                (83 * _PT_PER_MM, 144 * _PT_PER_MM), 64)
     BLANK_PLANNER = NotebookProperties("Blank_Planner",
-                                       (150 * _PT_PER_MM,  210 * _PT_PER_MM), 152)
+                                       (150 * _PT_PER_MM, 210 * _PT_PER_MM), 152)
     RING =  NotebookProperties("Ring_Notebook",
-                               (150 * _PT_PER_MM,  210 * _PT_PER_MM), 152)
+                               (150 * _PT_PER_MM, 210 * _PT_PER_MM), 152)
     PROFESSIONAL_MINI = NotebookProperties(
-        "Professional_Mini", (90 * _PT_PER_MM,  140 * _PT_PER_MM), 200)
+        "Professional_Mini", (90 * _PT_PER_MM, 140 * _PT_PER_MM), 200)
     PROFESSIONAL = NotebookProperties(
-        "Professional", (205 * _PT_PER_MM,  140 * _PT_PER_MM), 250)
+        "Professional", (205 * _PT_PER_MM, 140 * _PT_PER_MM), 250)
     # ...
     PLAIN = NotebookProperties("Plain_Notebook", DIN_B5, 72)
     # ...
@@ -148,27 +150,32 @@ def pages_in_notebook(path):
         yield ink
 
 
-def download_notebook(path, pdf_file, *args, **kwargs):
+def download_notebook(path, filename, *_, file_type, **kwargs):
     """ downloads the notebook and save a pdf of it
     """
-    name = os.path.basename(path)
-    _, (width, height), num_pages = get_notebook_properties(name)
-    surface = cairo.PDFSurface(pdf_file, width, height)
-    context = cairo.Context(surface)
-    for ink in pages_in_notebook(path):
-        write_ink(context, ink, *args, **kwargs)
-    surface.finish()
+    if file_type == "pdf":
+        name = os.path.basename(path)
+        _, (width, height), num_pages = get_notebook_properties(name)
+        surface = cairo.PDFSurface(filename, width, height)
+        context = cairo.Context(surface)
+        for ink in pages_in_notebook(path):
+            write_ink(context, ink, **kwargs)
+        surface.finish()
+    elif file_type == "inkml":
+        for page_num, ink in enumerate(pages_in_notebook(path)):
+            inkml.write(ink, filename + " " + str(page_num))
+    else:
+        raise ValueError("file type must be either pdf or inkml")
 
-
-def download_all_notebooks(pen_dir, save_dir, *args, **kwargs):
+def download_all_notebooks(pen_dir, save_dir, *_, file_type, **kwargs):
     """ downloads all notebooks in a folder and save each as pdf
     """
     for notebook_path in notebooks_in_folder(pen_dir):
         name = os.path.basename(notebook_path)
         notebook_name, *_ = get_notebook_properties(name)
-        pdf_file = os.path.join(save_dir,
-                                f"{notebook_name}_{name}.pdf")
-        download_notebook(notebook_path, pdf_file, *args, **kwargs)
+        filename = os.path.join(save_dir,
+                                f"{notebook_name}_{name}.{file_type}")
+        download_notebook(notebook_path, filename, file_type=file_type, **kwargs)
 
 
 def write_ink(ctx, ink, color, pressure_sensitive=False, spline=False):
@@ -178,6 +185,9 @@ def write_ink(ctx, ink, color, pressure_sensitive=False, spline=False):
         ctx: cairo context
         ink (list of Stroke): the pen stroke which are written
     """
+
+    #print(pressure_sensitive, spline)
+    #exit()
     ctx.set_line_cap(cairo.LINE_CAP_ROUND)
     ctx.set_line_join(cairo.LINE_JOIN_BEVEL)
     ctx.set_line_width(1.)
@@ -188,39 +198,43 @@ def write_ink(ctx, ink, color, pressure_sensitive=False, spline=False):
     else:
         raise ValueError(f"unknown color {color}")
     for stroke in ink:
-        if pressure_sensitive:
-            if len(stroke) == 1:
-                ctx.move_to(*position_in_pt(stroke[0]))
+        ctx.move_to(*position_in_pt(stroke[0]))
+        if len(stroke) == 1:
+            if pressure_sensitive:
                 ctx.set_line_width(.1 + stroke[0].pressure)
-                ctx.line_to(*position_in_pt(stroke[0]))
-                ctx.stroke()
-
-            for start_dot, end_dot in zip(stroke[:-1], stroke[1:]):
-                ctx.move_to(*position_in_pt(start_dot))
-                ctx.set_line_width(.1 + start_dot.pressure)
-                ctx.line_to(*position_in_pt(end_dot))
+            ctx.line_to(*position_in_pt(stroke[0]))
+            ctx.stroke()
+        elif len(stroke) < 4 or not spline:
+            for dot, previous_dot in zip(stroke[1:], stroke[:-1]):
+                ctx.line_to(*position_in_pt(dot))
+                if pressure_sensitive:
+                    ctx.set_line_width(.1 +
+                        (dot.pressure + previous_dot.pressure) / 2)
+                    ctx.stroke()
+                    ctx.move_to(*position_in_pt(dot))
+            if not pressure_sensitive:
                 ctx.stroke()
         else:
-            ctx.move_to(*position_in_pt(stroke[0]))
-            if (len(stroke) == 1):
-                ctx.line_to(*position_in_pt(stroke[0]))
-            else:
-                if len(stroke) < 4 or not spline:
-                    for dot in stroke[1:]:
-                        ctx.line_to(*position_in_pt(dot))
-                else:
-                    dots_in_pt = np.array([position_in_pt(dot) for dot in stroke])
-                    spline, u = interpolate.splprep(
-                        dots_in_pt.transpose(), k=3, s=len(dots_in_pt) / 20)
-                    for knot in 3 * list(u[2:-2]) + 4 * [u[1], u[-2]]:
-                        spline = interpolate.insert(knot, spline)
-                    x, y = spline[1]
-                    ctx.move_to(x[0], y[0])
-                    for i in range(len(x)//4 - 1):
-                        ctx.curve_to(x[4*i+1], y[4*i+1],
-                                     x[4*i+2], y[4*i+2],
-                                     x[4*i+3], y[4*i+3])
-            ctx.stroke()
+            dots_in_pt = np.array([position_in_pt(dot) for dot in stroke])
+            spline, u = interpolate.splprep(
+                dots_in_pt.transpose(), k=3, s=len(dots_in_pt) / 20)
+            for knot in 3 * list(u[2:-2]) + 4 * [u[1], u[-2]]:
+                spline = interpolate.insert(knot, spline)
+            points = np.array(spline[1]).transpose()
+            ctx.move_to(*points[0])
+            for control_1, control_2, knot, dot, previous_dot in zip(
+                    points[1:-4][::4], points[2:-4][::4],
+                    points[3:-4][::4], stroke[1:], stroke[:-1]):
+                ctx.curve_to(*control_1,
+                             *control_2,
+                             *knot)
+                if pressure_sensitive:
+                    ctx.set_line_width(.1 +
+                        (dot.pressure + previous_dot.pressure) / 2)
+                    ctx.stroke()
+                    ctx.move_to(*knot)
+            if not pressure_sensitive:
+                ctx.stroke()
     ctx.show_page()
 
 
@@ -238,21 +252,42 @@ def _parse_dot(data):
                pressure=pressure / _MAX_PRESSURE,
                duration=duration)
 
-
 def _parse_gap(data):
     a, b, time_start, time_end, stroke_len, c, d, e = \
         struct.unpack(_GAP_FORMAT, data)
     #print("\n", a, b, "  ", stroke_len, c, d, e)
-    if a==49:  # Todo(dv): I have no clue what this data packet could mean
+    if a == 49:  # Todo(dv): I have no clue what this data packet could mean
         return None
     return stroke_len
 
-def _remove_outliners(stroke):
+def _remove_outliners(stroke, distance=1):
+    """Replaces outliners from a stroke by the mid position of neighbors
+
+    Args:
+        stroke: list of Dot
+        distance (float): the point is replaced when the previous
+            and next point is more than distance away
+
+    Returns:
+        None (the argument stroke is changed)
+
+    Example:
+        >>> stroke = [Dot(0, 0, 1, 1), Dot(0, .1, 3, 1),
+        ...           Dot(0, 10, 1, 1), Dot(.1, .3, 1, 1)]
+        >>> _remove_outliners(stroke)
+        >>> for dot in stroke:
+        ...     print(dot.x, dot.y, dot.pressure, dot.duration)
+        0 0 1 1
+        0 0.1 3 1
+        0 0.2 1 1
+        0.1 0.3 1 1
+    """
     for i in range(1, len(stroke)-1):
         distance_prev = abs(stroke[i].x - stroke[i-1].x)
         distance_next = abs(stroke[i].x - stroke[i+1].x)
         distance_neighbors = abs(stroke[i-1].x - stroke[i+1].x)
-        if distance_prev > 1 and distance_next > 1 > distance_neighbors:
+        if (distance_prev > distance and
+                distance_next > distance > distance_neighbors):
             stroke[i] = Dot(x=(stroke[i-1].x + stroke[i+1].x) / 2,
                             y=stroke[i].y,
                             pressure=stroke[i].pressure,
@@ -261,19 +296,40 @@ def _remove_outliners(stroke):
         distance_prev = abs(stroke[i].y - stroke[i-1].y)
         distance_next = abs(stroke[i].y - stroke[i+1].y)
         distance_neighbors = abs(stroke[i-1].y - stroke[i+1].y)
-        if distance_prev > 1 and distance_next > 1 > distance_neighbors:
+        if (distance_prev > distance and
+                distance_next > distance > distance_neighbors):
             stroke[i] = Dot(x=stroke[i].x,
                             y=(stroke[i-1].y + stroke[i+1].y) / 2,
                             pressure=stroke[i].pressure,
                             duration=stroke[i].duration)
 
 def _remove_duplicates(stroke):
+    """Removes all duplicated dots from a stroke.
+
+    Hereby cumulate the total duration and choose the maximal pressure
+
+    Args:
+        stroke: a list of Dot
+
+    Returns:
+        None (the argument is altered)
+
+    Example:
+        >>> stroke = [Dot(0, 0, 1, 1), Dot(0, 1, 3, 1),
+        ...           Dot(0, 1, 1, 1), Dot(1, 1, 1, 1)]
+        >>> _remove_duplicates(stroke)
+        >>> for dot in stroke:
+        ...     print(dot.x, dot.y, dot.pressure, dot.duration)
+        0 0 1 1
+        0 1 3 2
+        1 1 1 1
+    """
     new_stroke = []
     for position, same_dots in groupby(stroke, lambda dot: (dot.x, dot.y)):
         same_dots = list(same_dots)
         dot = Dot(*position,
-            pressure = max(dot.pressure for dot in same_dots),
-            duration = sum(dot.duration for dot in same_dots))
+                  pressure=max(dot.pressure for dot in same_dots),
+                  duration=sum(dot.duration for dot in same_dots))
         new_stroke.append(dot)
     stroke[:] = new_stroke
 
