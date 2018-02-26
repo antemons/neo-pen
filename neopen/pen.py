@@ -45,7 +45,6 @@ __license__ = "GPL"
 Stroke = list
 Dot = namedtuple('Dot', ['x', 'y', 'pressure', 'duration'])
 
-
 _PT_PER_INCH = 72
 _PT_PER_MM = _PT_PER_INCH / 25.4 # point units (1/72 inch) per mm
 _UNIT_PT = _PT_PER_MM * 2.371  # DOTS_PER_INCH / MM_PER_INCH * MM_PER_NCODE_UNIT
@@ -97,7 +96,7 @@ class Notebook:
     # ...
 
 
-def position_in_pt(dot):
+def position_in_pt(dot, with_pressure=False):
     """ converts a dot to (x,y)-tuple in units of pt = (inch / 72)
 
     Args:
@@ -106,7 +105,11 @@ def position_in_pt(dot):
     Returns:
         tuple (x, y) of float
     """
-    return (dot.x + _OFFSET) * _UNIT_PT, (dot.y + _OFFSET) * _UNIT_PT
+    if not with_pressure:
+        return (dot.x + _OFFSET) * _UNIT_PT, (dot.y + _OFFSET) * _UNIT_PT
+    else:
+        return (dot.x + _OFFSET) * _UNIT_PT, (dot.y + _OFFSET) * _UNIT_PT, dot.pressure
+
 
 notebook_table = {
         "551": Notebook.NCODE_PLAIN,
@@ -126,7 +129,6 @@ def get_notebook_properties(name):
         warnings.warn(msg)
         notebook = Notebook.DEFAULT
     return notebook
-
 
 
 def notebooks_in_folder(folder):
@@ -167,6 +169,7 @@ def download_notebook(path, filename, *_, file_type, **kwargs):
     else:
         raise ValueError("file type must be either pdf or inkml")
 
+
 def download_all_notebooks(pen_dir, save_dir, *_, file_type, **kwargs):
     """ downloads all notebooks in a folder and save each as pdf
     """
@@ -178,7 +181,42 @@ def download_all_notebooks(pen_dir, save_dir, *_, file_type, **kwargs):
         download_notebook(notebook_path, filename, file_type=file_type, **kwargs)
 
 
-def write_ink(ctx, ink, color, pressure_sensitive=False, spline=False):
+def stroke_to_spline(stroke, smoothness = 1/200, preserve_points=False):
+    if len(stroke) == 1:
+        ret = "dot", np.array(stroke)
+    elif len(stroke) == 2:
+        ret = "line", np.array(stroke)
+    elif len(stroke) == 3:
+        (t, c, k), u = interpolate.splprep(np.array(stroke).transpose(), u=None, k=2, s=0)
+        c = np.array(c)
+        new_c = np.stack([c[:, 0],
+                          1/3 * c[:, 0] + 2/3 * c[:, 1],
+                          2/3 * c[:, 1] + 1/3 * c[:, 2],
+                          c[:, 2]])
+        new_c = list(new_c.transpose())
+        new_t = 4 * [0] + 4 * [1]
+        spline = (new_t, new_c, 3)
+        for knot in 4 * [u[1]]:
+            spline = interpolate.insert(knot, spline)
+        control_points = np.array(spline[1]).transpose()
+        control_points = control_points[:max(len(control_points)-4, 4)]
+        ret = "curve" , control_points
+    else:
+        spline, u = interpolate.splprep(
+            np.array(stroke).transpose(), k=3, s=len(stroke) * smoothness)
+        if preserve_points:
+            new_knots = 3 * list(u[2:-2]) + 4 * [u[1], u[-2]]
+        else:
+            new_knots = 3 * list(spline[0][4:-4])
+        for knot in new_knots:
+            spline = interpolate.insert(knot, spline)
+        control_points = np.array(spline[1]).transpose()
+        control_points = control_points[:max(len(control_points)-4, 4)]
+        ret = "curve", control_points
+    return ret
+
+
+def write_ink(ctx, ink, color, pressure_sensitive=False, as_spline=False):
     """ write ink onto a (cairo) context
 
     Args:
@@ -186,8 +224,6 @@ def write_ink(ctx, ink, color, pressure_sensitive=False, spline=False):
         ink (list of Stroke): the pen stroke which are written
     """
 
-    #print(pressure_sensitive, spline)
-    #exit()
     ctx.set_line_cap(cairo.LINE_CAP_ROUND)
     ctx.set_line_join(cairo.LINE_JOIN_BEVEL)
     ctx.set_line_width(1.)
@@ -197,42 +233,66 @@ def write_ink(ctx, ink, color, pressure_sensitive=False, spline=False):
         ctx.set_source_rgb(0, 0, 0)
     else:
         raise ValueError(f"unknown color {color}")
-    for stroke in ink:
-        ctx.move_to(*position_in_pt(stroke[0]))
-        if len(stroke) == 1:
-            if pressure_sensitive:
-                ctx.set_line_width(.1 + stroke[0].pressure)
-            ctx.line_to(*position_in_pt(stroke[0]))
-            ctx.stroke()
-        elif len(stroke) < 4 or not spline:
-            for dot, previous_dot in zip(stroke[1:], stroke[:-1]):
-                ctx.line_to(*position_in_pt(dot))
-                if pressure_sensitive:
-                    ctx.set_line_width(.1 +
-                        (dot.pressure + previous_dot.pressure) / 2)
-                    ctx.stroke()
-                    ctx.move_to(*position_in_pt(dot))
-            if not pressure_sensitive:
+    if as_spline:
+        if not pressure_sensitive:
+            for stroke in ink:
+                stroke_in_pt = np.array([position_in_pt(dot) for dot in stroke])
+                spline_type, points = stroke_to_spline(stroke_in_pt)
+                ctx.move_to(*points[0])
+                if spline_type == "dot":
+                    ctx.line_to(*points[0])
+                elif spline_type == "line":
+                    ctx.line_to(*points[1])
+                elif spline_type == "curve":
+                    for control_1, control_2, knot in zip(points[1:][::4],
+                                                          points[2:][::4],
+                                                          points[3:][::4]):
+                        ctx.curve_to(*control_1, *control_2, *knot)
+                else:
+                    raise ValueError("unknown spline type")
                 ctx.stroke()
         else:
-            dots_in_pt = np.array([position_in_pt(dot) for dot in stroke])
-            spline, u = interpolate.splprep(
-                dots_in_pt.transpose(), k=3, s=len(dots_in_pt) / 20)
-            for knot in 3 * list(u[2:-2]) + 4 * [u[1], u[-2]]:
-                spline = interpolate.insert(knot, spline)
-            points = np.array(spline[1]).transpose()
-            ctx.move_to(*points[0])
-            for control_1, control_2, knot, dot, previous_dot in zip(
-                    points[1:-4][::4], points[2:-4][::4],
-                    points[3:-4][::4], stroke[1:], stroke[:-1]):
-                ctx.curve_to(*control_1,
-                             *control_2,
-                             *knot)
+            for stroke in ink:
+                stroke_in_pt = np.array([position_in_pt(dot, with_pressure=True)
+                                         for dot in stroke])
+                spline_type, tmp = stroke_to_spline(stroke_in_pt)
+                points, pressure = tmp[:, :2], tmp[:, 2]
+
+                if spline_type == "dot":
+                    ctx.move_to(*points[0])
+                    ctx.line_to(*points[0])
+                    ctx.set_line_width(.1 + np.mean(pressure))
+                elif spline_type == "line":
+                    ctx.move_to(*points[0])
+                    ctx.line_to(*points[1])
+                    ctx.set_line_width(.1 + np.mean(pressure))
+                elif spline_type == "curve":
+                    for i, _ in enumerate(points[::4]):
+                        knot_0, control_0, control_1, knot_1 = points[4*i: 4*(i+1)]
+                        mean_pressure = np.mean(pressure[4*i: 4*(i+1)])
+                        ctx.move_to(*knot_0)
+                        ctx.set_line_width(.1 + mean_pressure)
+                        ctx.curve_to(*control_0, *control_1, *knot_1)
+                        ctx.stroke()
+                else:
+                    raise ValueError("unknown spline type")
+                ctx.stroke()
+    else:
+        for stroke in ink:
+            ctx.move_to(*position_in_pt(stroke[0]))
+            if len(stroke) == 1:
                 if pressure_sensitive:
-                    ctx.set_line_width(.1 +
-                        (dot.pressure + previous_dot.pressure) / 2)
-                    ctx.stroke()
-                    ctx.move_to(*knot)
+                    ctx.set_line_width(.1 + stroke[0].pressure)
+                ctx.line_to(*position_in_pt(stroke[0]))
+            else:
+                for dot, previous_dot in zip(stroke[1:], stroke):
+                    if pressure_sensitive:
+                        ctx.set_line_width(.1 +
+                            (dot.pressure + previous_dot.pressure) / 2)
+                    ctx.line_to(*position_in_pt(dot))
+                    if pressure_sensitive:
+                        ctx.stroke()
+                        ctx.move_to(*position_in_pt(dot))
             if not pressure_sensitive:
                 ctx.stroke()
     ctx.show_page()

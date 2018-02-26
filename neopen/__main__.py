@@ -46,7 +46,7 @@ def main():
         args.save_dir,
         color=args.color,
         pressure_sensitive=args.pressure_sensitive,
-        spline=args.spline,
+        as_spline=args.spline,
         file_type=args.type)
 
 
