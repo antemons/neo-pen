@@ -49,8 +49,6 @@ _PT_PER_INCH = 72
 _PT_PER_MM = _PT_PER_INCH / 25.4 # point units (1/72 inch) per mm
 _UNIT_PT = _PT_PER_MM * 2.371  # DOTS_PER_INCH / MM_PER_INCH * MM_PER_NCODE_UNIT
                                # see: https://github.com/NeoSmartpen/UWPSDK
-DIN_B5 = (176 * _PT_PER_MM, 250 * _PT_PER_MM)
-US_LETTER = (216 * _PT_PER_MM, 280 * _PT_PER_MM)
 
 _OFFSET = -6  # this value seems to work optimal
 _DOT_FORMAT = "<BHHBBB"
@@ -62,38 +60,64 @@ NotebookProperties = namedtuple(
     'NotebookProperties',
     ['name', 'size', 'num_pages'])
 
-class Notebook:
-    """The properties of the notebooks
+def get_notebook_properties(book_code):
+    """Returns properties of the notebooks
 
-    The dimensions are taken from:
+    The book codes and properties are taken from:
+        https://usermanual.wiki/Pdf/NcodeE284A220Service20Development20Getting20Started20Guide20v101.1352217076.pdf
+    and the properties can be also found on:
         https://www.neosmartpen.com/en/notebook/
-    and from the document properties of the Ncode pdfs
+    For the document properties of the Ncode pdfs see
         https://www.neosmartpen.com/en/ncode-pdf/
 
     The following list is not complete.
     """
+    FORMAT_DIN_B5 = (176 * _PT_PER_MM, 250 * _PT_PER_MM)
+    FORMAT_US_LETTER = (216 * _PT_PER_MM, 280 * _PT_PER_MM)
+    FORMAT_DIN_A4 = (210 * _PT_PER_MM, 297 * _PT_PER_MM)
 
-    DEFAULT = NotebookProperties("Notebook", US_LETTER, 0)
-    MEMO = NotebookProperties("Memo_Notebook",
-                              (83 * _PT_PER_MM, 148 * _PT_PER_MM), 50)
-    POCKET = NotebookProperties("Pocket_Notebook",
-                                (83 * _PT_PER_MM, 144 * _PT_PER_MM), 64)
-    BLANK_PLANNER = NotebookProperties("Blank_Planner",
-                                       (150 * _PT_PER_MM, 210 * _PT_PER_MM), 152)
-    RING =  NotebookProperties("Ring_Notebook",
-                               (150 * _PT_PER_MM, 210 * _PT_PER_MM), 152)
-    PROFESSIONAL_MINI = NotebookProperties(
-        "Professional_Mini", (90 * _PT_PER_MM, 140 * _PT_PER_MM), 200)
-    PROFESSIONAL = NotebookProperties(
-        "Professional", (205 * _PT_PER_MM, 140 * _PT_PER_MM), 250)
-    # ...
-    PLAIN = NotebookProperties("Plain_Notebook", DIN_B5, 72)
-    # ...
-    NCODE_PLAIN = NotebookProperties("Ncode", US_LETTER, 50)
-    NCODE_STRING = NotebookProperties("Ncode", US_LETTER, 50)
-    NCODE_GRID = NotebookProperties("Ncode", US_LETTER, 50)
-    NCODE_DOT = NotebookProperties("Ncode", US_LETTER, 50)
-    # ...
+    NOTEBOOKS = {
+        "161": NotebookProperties("Papertube", FORMAT_DIN_A4, 1),
+        "551": NotebookProperties("Ncode_plain", FORMAT_US_LETTER, 50),
+        "601": NotebookProperties("Pocket_Notebook",
+                                  (83 * _PT_PER_MM, 144 * _PT_PER_MM), 64),
+        "602": NotebookProperties("Memo_Notebook",
+                                  (83 * _PT_PER_MM, 148 * _PT_PER_MM), 50),
+        "603": NotebookProperties("Ring_Notebook",
+                                  (150 * _PT_PER_MM, 210 * _PT_PER_MM), 152),
+        "604": NotebookProperties("Plain_Notebook_1", FORMAT_DIN_B5, 72),
+        "609": NotebookProperties("Idea_Pad", FORMAT_DIN_A4, 100),
+        "610": NotebookProperties("Plain_Notebook_2", FORMAT_DIN_B5, 72),
+        "611": NotebookProperties("Plain_Notebook_3", FORMAT_DIN_B5, 72),
+        "612": NotebookProperties("Plain_Notebook_4", FORMAT_DIN_B5, 72),
+        "613": NotebookProperties("Plain_Notebook_5", FORMAT_DIN_B5, 72),
+        "614": NotebookProperties("N_A4", FORMAT_DIN_A4, 50),
+        "615": NotebookProperties("Professional",
+                                  (140 * _PT_PER_MM, 205 * _PT_PER_MM), 250),
+        "616": NotebookProperties("Professional_Mini",
+                                  (90 * _PT_PER_MM, 140 * _PT_PER_MM), 200),
+        "617": NotebookProperties("College_Note_1", FORMAT_US_LETTER, 200),
+        "618": NotebookProperties("College_Note_2", FORMAT_US_LETTER, 200),
+        "619": NotebookProperties("College_Note_3", FORMAT_US_LETTER, 200),
+        "620": NotebookProperties("Idea_Pad_Mini",
+                                  (127 * _PT_PER_MM, 200 * _PT_PER_MM), 100),
+        "625": NotebookProperties("Blank_Planner",
+                                  (150 * _PT_PER_MM, 210 * _PT_PER_MM), 152),
+        "629": NotebookProperties("Blind_Notebook", FORMAT_US_LETTER, 144),
+        #
+        # NotebookProperties("Ncode", FORMAT_US_LETTER, 50)
+        # NotebookProperties("Ncode", FORMAT_US_LETTER, 50)
+        # NotebookProperties("Ncode", FORMAT_US_LETTER, 50)
+    }
+
+    try:
+        return NOTEBOOKS[book_code]
+    except KeyError:
+        msg = (f'format of document {book_code} not known, '
+               f'US Letter is assumed')
+        warnings.warn(msg)
+        return  NotebookProperties("Notebook_" + book_code,
+                                   FORMAT_US_LETTER, 0)
 
 
 def position_in_pt(dot, with_pressure=False):
@@ -109,26 +133,6 @@ def position_in_pt(dot, with_pressure=False):
         return (dot.x + _OFFSET) * _UNIT_PT, (dot.y + _OFFSET) * _UNIT_PT
     else:
         return (dot.x + _OFFSET) * _UNIT_PT, (dot.y + _OFFSET) * _UNIT_PT, dot.pressure
-
-
-notebook_table = {
-        "551": Notebook.NCODE_PLAIN,
-        "604": Notebook.NCODE_PLAIN,
-        "601": Notebook.POCKET,
-        "610": Notebook.PLAIN,
-        "611": Notebook.PLAIN,
-        "612": Notebook.PLAIN,
-        "613": Notebook.NCODE_PLAIN}
-
-def get_notebook_properties(name):
-    try:
-        notebook = notebook_table[name]
-    except KeyError:
-        msg = (f'format of document {name} not known, '
-               f'US Letter is assumed')
-        warnings.warn(msg)
-        notebook = Notebook.DEFAULT
-    return notebook
 
 
 def notebooks_in_folder(folder):
@@ -177,7 +181,7 @@ def download_all_notebooks(pen_dir, save_dir, *_, file_type, **kwargs):
         name = os.path.basename(notebook_path)
         notebook_name, *_ = get_notebook_properties(name)
         filename = os.path.join(save_dir,
-                                f"{notebook_name}_{name}.{file_type}")
+                                f"{notebook_name}.{file_type}")
         download_notebook(notebook_path, filename, file_type=file_type, **kwargs)
 
 
