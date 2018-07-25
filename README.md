@@ -6,7 +6,7 @@ This software downloads the digital ink from a Neo spartpen N2.
 
 ### Setup
 
- 0. (Install virtual environment:)
+ 0. (Optional: install virtual environment)
  
         virtualenv env -p python3
         source  env/bin/activate
@@ -18,6 +18,10 @@ This software downloads the digital ink from a Neo spartpen N2.
 ### Usage
 
         neo-pen <path to pen Data folder> ./
+
+## Note
+
+Since the Moleskine® Smart Writing Set is a rebrand of the Neo N2, it should work as well. Any feedback is welcome.
 
 ## Author
 
