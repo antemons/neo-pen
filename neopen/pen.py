@@ -21,6 +21,7 @@
 """
 
 import os
+import shutil
 import struct
 import cairocffi as cairo
 import warnings
@@ -121,7 +122,7 @@ def get_notebook_properties(book_code):
 
 
 def position_in_pt(dot, with_pressure=False):
-    """ converts a dot to (x,y)-tuple in units of pt = (inch / 72)
+    """Converts a dot to (x,y)-tuple in units of pt = (inch / 72)
 
     Args:
         dot: instance with attributes x, y
@@ -132,11 +133,12 @@ def position_in_pt(dot, with_pressure=False):
     if not with_pressure:
         return (dot.x + _OFFSET) * _UNIT_PT, (dot.y + _OFFSET) * _UNIT_PT
     else:
-        return (dot.x + _OFFSET) * _UNIT_PT, (dot.y + _OFFSET) * _UNIT_PT, dot.pressure
+        return ((dot.x + _OFFSET) * _UNIT_PT, (dot.y + _OFFSET) * _UNIT_PT,
+                dot.pressure)
 
 
 def notebooks_in_folder(folder):
-    """ yields all paths of notebook directories in a directory
+    """Yields all paths of notebook directories in a directory
     """
     for foo in os.listdir(folder):
         # TODO(dv): what is this folder level for?
@@ -157,7 +159,7 @@ def pages_in_notebook(path):
 
 
 def download_notebook(path, filename, *_, file_type, **kwargs):
-    """ downloads the notebook and save a pdf of it
+    """Downloads the notebook and save a pdf of it
     """
     if file_type == "pdf":
         name = os.path.basename(path)
@@ -175,15 +177,37 @@ def download_notebook(path, filename, *_, file_type, **kwargs):
 
 
 def download_all_notebooks(pen_dir, save_dir, *_, file_type, **kwargs):
-    """ downloads all notebooks in a folder and save each as pdf
+    """Downloads all notebooks in a folder and save each as pdf
     """
     for notebook_path in notebooks_in_folder(pen_dir):
         name = os.path.basename(notebook_path)
         notebook_name, *_ = get_notebook_properties(name)
         filename = os.path.join(save_dir,
                                 f"{notebook_name}.{file_type}")
-        download_notebook(notebook_path, filename, file_type=file_type, **kwargs)
+        download_notebook(
+            notebook_path, filename, file_type=file_type, **kwargs)
 
+def list_all_notebooks(pen_dir):
+    """List all notebooks in a folder
+    """
+    for notebook_path in notebooks_in_folder(pen_dir):
+        name = os.path.basename(notebook_path)
+        notebook_name, *_ = get_notebook_properties(name)
+        num_pages = len(os.listdir(notebook_path))
+        print(f"{notebook_name: <20} {num_pages: <2} pages")
+
+def delete_notebook(pen_dir, name):
+    """Delete a notebooks from the pen
+    """
+    for notebook_path in notebooks_in_folder(pen_dir):
+        name_on_pen = os.path.basename(notebook_path)
+        notebook_name, *_ = get_notebook_properties(name_on_pen)
+        if name == notebook_name:
+            shutil.rmtree(notebook_path)
+            print(f'{name} has been removed from the pen')
+            break
+    else:
+        raise KeyError(f"{name} not found on the pen")
 
 def stroke_to_spline(stroke, smoothness = 1/200, preserve_points=False):
     if len(stroke) == 1:
@@ -191,7 +215,8 @@ def stroke_to_spline(stroke, smoothness = 1/200, preserve_points=False):
     elif len(stroke) == 2:
         ret = "line", np.array(stroke)
     elif len(stroke) == 3:
-        (t, c, k), u = interpolate.splprep(np.array(stroke).transpose(), u=None, k=2, s=0)
+        (t, c, k), u = interpolate.splprep(np.array(stroke).transpose(),
+                                           u=None, k=2, s=0)
         c = np.array(c)
         new_c = np.stack([c[:, 0],
                           1/3 * c[:, 0] + 2/3 * c[:, 1],
@@ -221,7 +246,7 @@ def stroke_to_spline(stroke, smoothness = 1/200, preserve_points=False):
 
 
 def write_ink(ctx, ink, color, pressure_sensitive=False, as_spline=False):
-    """ write ink onto a (cairo) context
+    """Write ink onto a (cairo) context
 
     Args:
         ctx: cairo context
@@ -272,7 +297,8 @@ def write_ink(ctx, ink, color, pressure_sensitive=False, as_spline=False):
                     ctx.set_line_width(.1 + np.mean(pressure))
                 elif spline_type == "curve":
                     for i, _ in enumerate(points[::4]):
-                        knot_0, control_0, control_1, knot_1 = points[4*i: 4*(i+1)]
+                        knot_0, control_0, control_1, knot_1 = \
+                            points[4*i: 4*(i+1)]
                         mean_pressure = np.mean(pressure[4*i: 4*(i+1)])
                         ctx.move_to(*knot_0)
                         ctx.set_line_width(.1 + mean_pressure)

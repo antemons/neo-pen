@@ -21,6 +21,7 @@
 """
 
 import argparse
+import os.path
 from . import pen
 
 __author__ = "Daniel Vorberg"
@@ -36,18 +37,32 @@ def main():
                         help='path to a file')
     parser.add_argument("--color", default="black", help="black|blue")
     parser.add_argument("--pressure_sensitive", type=bool)
-    parser.add_argument("--spline", type=bool)
+    feature_parser = parser.add_mutually_exclusive_group(required=False)
+
+    feature_parser.add_argument('--spline', dest='spline', action='store_true')
+    feature_parser.add_argument('--no-spline', dest='spline', action='store_false')
+    parser.set_defaults(spline=False)
     parser.add_argument("--type", default="pdf", help="pdf|inkml")
+    parser.add_argument('--list', dest='list', action='store_true')
+    parser.add_argument("--delete", default="", help='delete notebook with given name from pen')
+    parser.set_defaults(list=False)
     args = parser.parse_args()
 
+    data_path = os.path.join(args.pen_dir, 'Data')
+    pen_dir = data_path if os.path.isdir(data_path) else args.pen_dir
 
-    pen.download_all_notebooks(
-        args.pen_dir,
-        args.save_dir,
-        color=args.color,
-        pressure_sensitive=args.pressure_sensitive,
-        as_spline=args.spline,
-        file_type=args.type)
+    if args.list:
+        pen.list_all_notebooks(pen_dir)
+    elif args.delete:
+        pen.delete_notebook(pen_dir, args.delete)
+    else:
+        pen.download_all_notebooks(
+            pen_dir,
+            args.save_dir,
+            color=args.color,
+            pressure_sensitive=args.pressure_sensitive,
+            as_spline=args.spline,
+            file_type=args.type)
 
 
 if __name__ == "__main__":
