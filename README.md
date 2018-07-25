@@ -21,7 +21,7 @@ This software downloads the digital ink from a Neo spartpen N2.
 
 ## Note
 
-Since the Moleskine® Smart Writing Set is a rebrand of the Neo N2, it should work as well. Any feedback is welcome.
+Since the Moleskine® Smart Writing Set seems to be techically identical to the Neo N2, it should work as well. Any feedback is welcome.
 
 ## Author
 
