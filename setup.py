@@ -17,7 +17,7 @@ setup(
       ]
     },   
     install_requires=[
-        'cairocffi',
+        'cairocffi', 'numpy', 'scipy',
         ],
     zip_safe=True,
     long_description=""" """)
