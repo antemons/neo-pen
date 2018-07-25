@@ -33,7 +33,7 @@ try:
     import numpy as np
     from scipy import interpolate
 except ImportError:
-    warnings.warn("install numpy and scipy when you want"
+    warnings.warn("install numpy and scipy when you want "
                   "to use the spline option")
 
 
